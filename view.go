@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -75,7 +76,9 @@ func (a *app) toolbar(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
 	f := a.current()
-	pane := a.paneWidth(c)
+	// room is the pane's width but for the window's buttons, which take
+	// the right end of the title bar off macOS.
+	room := a.paneWidth(c) - bar.Right
 	left := float32(16)
 	if a.sidebarHidden {
 		left = bar.Left + 8
@@ -87,11 +90,11 @@ func (a *app) toolbar(c *ui.Context) {
 		}
 		a.windowTitle(c)
 		if f != nil && a.loaded {
-			a.fileOptions(c, f, pane)
+			a.fileOptions(c, f, room)
 			toolbarSeparator(c)
 		}
 		mode := a.browseMode
-		if pane >= 820 {
+		if room >= 820 {
 			segmented(c, "mode", &mode, "Continuous", "Single File").Tooltip("Continuous or single file")
 		} else if toggleIcon(c, iconFocus, "Single File", "", mode == modeSingle).Clicked() {
 			mode = flip(mode)
@@ -99,7 +102,7 @@ func (a *app) toolbar(c *ui.Context) {
 		if mode != a.browseMode {
 			a.setBrowseMode(mode)
 		}
-		if pane >= 600 {
+		if room >= 600 {
 			if iconButton(c, iconRefresh, "Refresh", keyRefresh).Clicked() {
 				a.refresh()
 			}
@@ -107,7 +110,26 @@ func (a *app) toolbar(c *ui.Context) {
 				go a.chooseRepo()
 			}
 		}
+		a.menuButton(c)
 	})
+}
+
+// menuInWindow is whether the window shows a button for the menus: off
+// macOS, menu bars belong to windows, and one without its title bar, as
+// Osprey's, shows none; only Alt or F10 would open its menus.
+var menuInWindow = runtime.GOOS != "darwin"
+
+// menuButton opens the menu bar's menus under it, where the window shows
+// no menu bar.
+func (a *app) menuButton(c *ui.Context) {
+	if !menuInWindow {
+		return
+	}
+	b := iconButton(c, iconMenu, "Menu", "")
+	if b.Clicked() && a.win != nil {
+		r := b.Bounds()
+		go a.appMenu.PopupAt(a.win, int(r.X), int(r.Y+r.H))
+	}
 }
 
 // windowTitle names the repository and its branch, over what is compared,
@@ -139,31 +161,34 @@ func (a *app) comparisonLabel() string {
 	return label + changes.PathsLabel(a.repo.paths)
 }
 
-// fileOptions are the toolbar's controls of how the file shows.
-func (a *app) fileOptions(c *ui.Context, f *file, pane float32) {
+// fileOptions are the toolbar's controls of how the file shows. Where
+// there is no room for the toggles of the view, the View menu has them.
+func (a *app) fileOptions(c *ui.Context, f *file, room float32) {
 	segmented(c, "page", &a.page, "Diff", "Full File").Tooltip("Diff or full file")
 	diff := a.page == pageDiff && f.hasText()
-	if diff && !f.oneSided() {
-		if pane >= 900 {
-			segmented(c, "layout", &a.layout, "Split", "Unified").Tooltip("Split or unified")
-		} else if toggleIcon(c, iconSplit, "Unified", "", a.layout == layoutUnified).Clicked() {
-			a.layout = flip(a.layout)
+	if room >= 420 {
+		if diff && !f.oneSided() {
+			if room >= 900 {
+				segmented(c, "layout", &a.layout, "Split", "Unified").Tooltip("Split or unified")
+			} else if toggleIcon(c, iconSplit, "Unified", "", a.layout == layoutUnified).Clicked() {
+				a.layout = flip(a.layout)
+			}
 		}
-	}
-	if diff && toggleIcon(c, iconExpand, "Show unchanged lines", "", a.expand).Clicked() {
-		a.expand = !a.expand
-	}
-	if toggleIcon(c, iconWrap, "Wrap lines", "", a.wrap).Clicked() {
-		a.wrap = !a.wrap
+		if diff && toggleIcon(c, iconExpand, "Show unchanged lines", "", a.expand).Clicked() {
+			a.expand = !a.expand
+		}
+		if toggleIcon(c, iconWrap, "Wrap lines", "", a.wrap).Clicked() {
+			a.wrap = !a.wrap
+		}
 	}
 	if diff {
 		toolbarSeparator(c)
-		a.hunkNav(c, f, pane)
+		a.hunkNav(c, f, room)
 	}
 }
 
 // hunkNav goes to the changes of f, and counts them where there is room.
-func (a *app) hunkNav(c *ui.Context, f *file, pane float32) {
+func (a *app) hunkNav(c *ui.Context, f *file, room float32) {
 	t := c.Theme()
 	d := f.diffView(a.browseMode)
 	n := len(d.Hunks())
@@ -173,7 +198,7 @@ func (a *app) hunkNav(c *ui.Context, f *file, pane float32) {
 	if iconButton(c, iconChevronUp, "Previous change", keyPreviousChange).Clicked() {
 		a.stepHunk(-1)
 	}
-	if pane >= 900 {
+	if room >= 900 {
 		label := plural(n, "change")
 		if i, inside := d.CurrentHunk(); inside {
 			label = fmt.Sprintf("%d of %d", i+1, n)

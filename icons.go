@@ -27,4 +27,5 @@ var (
 	iconSearch     = stroked(`<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>`)
 	iconClear      = stroked(`<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`)
 	iconSidebar    = stroked(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>`)
+	iconMenu       = stroked(`<path d="M4 6h16M4 12h16M4 18h16"/>`)
 )

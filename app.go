@@ -38,6 +38,9 @@ func flip(v int) int { return 1 - v }
 // what it compares, and how the user chose to see it.
 type app struct {
 	win *mygo.Window
+	// appMenu is the menu bar's, which menuButton opens where the window
+	// shows no menu bar.
+	appMenu *mygo.Menu
 	// repo is the Git repository the session compares, nil for folders
 	// and files; it lasts as the user picks another comparison of it.
 	repo *repo

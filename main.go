@@ -79,7 +79,8 @@ func main() {
 	mygo.App.SetName("Osprey")
 	mygo.App.WhenReady(func() {
 		setDockIcon()
-		mygo.App.SetMenu(a.menu())
+		a.appMenu = a.menu()
+		mygo.App.SetMenu(a.appMenu)
 		a.win = mygo.NewWindow(mygo.WindowOptions{
 			Title:                "Osprey",
 			Width:                1280,

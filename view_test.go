@@ -138,6 +138,38 @@ func TestCompactReviewControls(t *testing.T) {
 	}
 }
 
+// Off macOS the window shows no menu bar: a button opens the menus, left of
+// the window's buttons, on the welcome page too, however narrow the window,
+// and no control of the toolbar goes under the window's buttons.
+func TestMenuButton(t *testing.T) {
+	defer func(shown bool) { menuInWindow = shown }(menuInWindow)
+	bar := ui.TitleBar{Height: headerHeight, Right: 138} // Windows' three buttons
+	for _, shown := range []bool{true, false} {
+		menuInWindow = shown
+		for _, size := range [][2]int{{1280, 820}, {720, 420}} {
+			for name, a := range map[string]*app{"welcome page": newApp(), "files": reviewFixture()} {
+				h := ui.NewTester(a.view, size[0], size[1])
+				h.SetTitleBar(bar)
+				r, ok := h.Find("Menu")
+				if ok != shown {
+					t.Fatalf("%s, %dx%d: a menu button is %v, want %v", name, size[0], size[1], ok, shown)
+				}
+				if ok && r.Y+r.H > headerHeight {
+					t.Errorf("%s, %dx%d: the menu button at %+v is not in the title bar", name, size[0], size[1], r)
+				}
+				for _, label := range []string{"Menu", "Open Repository", "Refresh", "Single File", "Next change", "Wrap lines"} {
+					if r, ok := h.Find(label); ok && r.Y < headerHeight && r.X+r.W > float32(size[0])-bar.Right {
+						t.Errorf("%s, %dx%d: %q at %+v goes under the window's buttons", name, size[0], size[1], label, r)
+					}
+				}
+				if shown {
+					click(t, h, "Menu") // with no window to open the menus over, nothing
+				}
+			}
+		}
+	}
+}
+
 func TestWelcomeCommands(t *testing.T) {
 	for _, size := range [][2]int{{1280, 820}, {720, 420}} {
 		h := ui.NewTester(newApp().view, size[0], size[1])

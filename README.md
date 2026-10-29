@@ -13,7 +13,7 @@ Its author has used about 1% of Git's commands, and still searches how to undo a
 
 ## Install
 
-Download Osprey from the [releases](https://github.com/overcat/osprey/releases). The builds aren't signed yet, so macOS and Windows ask you once to allow them. Then choose File → Install Command Line Tool… to get the `osprey` command, and `osp`, its short name.
+Download Osprey from the [releases](https://github.com/overcat/osprey/releases). The builds aren't signed yet, so macOS and Windows ask you once to allow them. Then choose File → Install Command Line Tool…, in the ☰ menu on Windows and Linux, to get the `osprey` command, and `osp`, its short name.
 
 Osprey needs Git, and macOS 13 or later on Apple silicon, Windows, or Linux with GTK 3. It is developed on macOS; on Windows and Linux it is newer, so please report what doesn't work.
 

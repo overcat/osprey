@@ -18,7 +18,8 @@ func (a *app) welcome(c *ui.Context) {
 	_, height := c.Size()
 	roomy := height >= 700 // room for the picture and the keys
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
-		ui.Row(c).Height(headerHeight).Shrink(0).FillWidth().DragWindow()
+		ui.Row(c).Height(headerHeight).Shrink(0).FillWidth().Padding(0, c.TitleBar().Right+10, 0, 0).
+			Justify(ui.End).AlignItems(ui.Center).DragWindow().Children(func() { a.menuButton(c) })
 		ui.Scroll(c).Grow(1).Children(func() {
 			ui.Column(c).FillWidth().MinHeight(height-headerHeight).Center().Gap(6).Padding(0, 32, 32, 32).Children(func() {
 				if roomy {
