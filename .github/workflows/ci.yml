@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux, os: ubuntu-latest }
+          - { name: macOS, os: macos-latest }
+          - { name: Windows, os: windows-latest }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # Pango lays out the text of the UI tests; GTK and a virtual display
+      # run the app itself; NSIS makes the Windows installer.
+      - name: Install GTK, a font, a virtual display and NSIS
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-0 libpangocairo-1.0-0 fonts-dejavu-core xvfb nsis
+
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+      - name: Check that go.mod and go.sum are tidy
+        if: runner.os == 'Linux'
+        run: go mod tidy -diff
+      - name: Vet and build for every platform
+        if: runner.os == 'Linux'
+        run: |
+          for os in darwin linux windows; do
+            GOOS=$os go vet ./...
+            GOOS=$os go vet -tags mygo_noinspector ./...
+          done
+          GOOS=linux GOARCH=arm64 go build -o /dev/null .
+          GOOS=windows GOARCH=arm64 go build -o /dev/null .
+
+      - name: Test
+        if: runner.os != 'Windows'
+        run: go test -race ./...
+      - name: Test
+        if: runner.os == 'Windows'
+        run: go test ./...
+
+      # Each platform packages its own app; Linux packages Windows's too,
+      # with its installer, as the Release workflow does.
+      - name: Package
+        run: |
+          case "$RUNNER_OS" in
+            Linux)
+              scripts/windows-launchers.sh
+              go tool mygo build -platform linux/amd64,windows/amd64 -o "$RUNNER_TEMP/build" ;;
+            macOS)
+              go tool mygo build -o "$RUNNER_TEMP/build" ;;
+            Windows)
+              scripts/windows-launchers.sh
+              go tool mygo build -platform windows/amd64 -o "$RUNNER_TEMP/build" ;;
+          esac
+
+      - name: Open a repository in Osprey, and save a picture of the window
+        run: |
+          case "$RUNNER_OS" in
+            Linux) xvfb-run -a scripts/smoke-test.sh "$RUNNER_TEMP/build/linux-amd64/osprey" "$RUNNER_TEMP/shots/linux.png" ;;
+            macOS) scripts/smoke-test.sh "$RUNNER_TEMP/build/darwin-arm64/Osprey.app/Contents/MacOS/Osprey" "$RUNNER_TEMP/shots/macos.png" ;;
+            Windows) scripts/smoke-test.sh "$RUNNER_TEMP/build/windows-amd64/Osprey.exe" "$RUNNER_TEMP/shots/windows.png" ;;
+          esac
+
+      - name: Check the command line on Windows, through osp.exe and osprey.com
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $app = Join-Path $env:RUNNER_TEMP 'build\windows-amd64'
+          $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
+          $out = & "$app\osprey.com" --version
+          if ($LASTEXITCODE -ne 0 -or $out -ne "osprey $version") { throw "osprey.com --version: exit $LASTEXITCODE, '$out'" }
+          $out = & "$app\osp.exe" --help | Out-String
+          if ($LASTEXITCODE -ne 0 -or $out -notmatch 'Usage:') { throw "osp.exe --help: exit $LASTEXITCODE" }
+          & "$app\osp.exe" --no-such-option 2>$null
+          if ($LASTEXITCODE -ne 2) { throw "osp.exe with an unknown option: exit $LASTEXITCODE, not 2" }
+          & "$app\osp.exe" install-cli
+          if ($LASTEXITCODE -ne 0) { throw "osp.exe install-cli: exit $LASTEXITCODE" }
+          if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -notcontains $app) { throw "install-cli didn't put $app on the PATH" }
+          exit 0
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: osprey-window-${{ matrix.name }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: ${{ runner.temp }}/shots/
+      # The app goes as its .dmg: an artifact keeps no executable bits.
+      - uses: actions/upload-artifact@v7
+        if: runner.os != 'Windows'
+        with:
+          name: osprey-${{ matrix.name }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/build/*/*.dmg
+            ${{ runner.temp }}/build/*/*.deb
+            ${{ runner.temp }}/build/*/*.tar.gz
+            ${{ runner.temp }}/build/*/*.exe
+            ${{ runner.temp }}/build/*/*.com

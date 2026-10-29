@@ -1,0 +1,7 @@
+# Text files keep LF line endings on every platform, Windows included, so
+# that gofmt and the tests see the same bytes everywhere.
+* text=auto eol=lf
+*.png binary
+*.icns binary
+*.ico binary
+*.zip binary

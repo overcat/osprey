@@ -1,0 +1,18 @@
+{
+  "name": "Osprey",
+  "slug": "osprey",
+  "identifier": "network.lightsail.osprey",
+  "version": "0.1.0",
+  "copyright": "© 2026 Jun Luo",
+  "resources": ["LICENSE", "THIRD_PARTY_NOTICES.md"],
+  "macos": {
+    "minimumSystemVersion": "13.0"
+  },
+  "linux": {
+    "webview": false,
+    "command": "osprey",
+    "maintainer": "Jun Luo <4catcode@gmail.com>",
+    "comment": "Review code changes file by file",
+    "categories": ["Development"]
+  }
+}

@@ -1,0 +1,71 @@
+# Pushing a tag v<version> builds Osprey for every platform into a draft
+# release, to check and publish by hand. The builds are not signed.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    name: Draft the release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check that the tag is the version in mygo.json
+        run: test "$GITHUB_REF_NAME" = "v$(jq -r .version mygo.json)"
+      - name: Create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes --title "Osprey ${GITHUB_REF_NAME#v}"
+
+  build:
+    name: Build for ${{ matrix.name }}
+    needs: draft
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, slug: macos, os: macos-latest, platform: "darwin/arm64" }
+          - { name: Linux and Windows, slug: linux-windows, os: ubuntu-latest, platform: "linux/amd64,linux/arm64,windows/amd64,windows/arm64" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install NSIS, for the Windows installers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nsis
+      - name: Build
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            scripts/windows-launchers.sh
+          fi
+          go tool mygo build -platform "${{ matrix.platform }}" -o dist
+      # The installers and archives mygo made, and for Windows a zip of the
+      # programs alone, which run without installing.
+      - name: Collect the assets
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir assets
+          for dir in dist/*/; do
+            target="$(basename "$dir")"
+            case "$target" in
+              windows-*) (cd "$dir" && zip -q "$GITHUB_WORKSPACE/assets/osprey-$version-$target.zip" Osprey.exe osp.exe osprey.com LICENSE THIRD_PARTY_NOTICES.md) ;;
+            esac
+            find "$dir" -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.tar.gz' -o -name '*-setup-*.exe' \) -exec cp {} assets/ \;
+          done
+          cd assets && shasum -a 256 * > "SHA256SUMS-${{ matrix.slug }}.txt"
+      - name: Upload them to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" assets/* --clobber

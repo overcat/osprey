@@ -1,0 +1,9 @@
+/osprey
+.DS_Store
+/dist/
+# Design sources and drafts, kept locally.
+/design/
+# Left by an interrupted Windows build of mygo, which would reuse it.
+/mygo_windows_*.syso
+# Built by scripts/windows-launchers.sh.
+/resources/windows-*/
