@@ -1,7 +1,8 @@
 #!/bin/sh
-# Opens Osprey on a new repository with a change not committed yet, saves a
-# picture of its window once the change has loaded, and checks that it
-# quit: that the app starts, and shows changes, where it runs.
+# Opens Osprey on a new repository with a change not committed yet, and
+# saves a picture of its window once the change has loaded: that the app
+# starts, and shows changes, where it runs. Osprey fails when the change
+# doesn't show within a minute.
 #
 #   scripts/smoke-test.sh <the osprey program> <picture.png>
 set -eu
@@ -20,7 +21,7 @@ git add main.go
 git commit -q -m "Add main"
 printf 'package main\n\nfunc main() {\n\tprintln("hello")\n}\n' >"$repo/main.go"
 
-OSPREY_SNAPSHOT="$shot" "$app" --wait -C "$repo" &
+OSPREY_SNAPSHOT="$shot" OSPREY_SNAPSHOT_SETUP=main.go "$app" --wait -C "$repo" &
 pid=$!
 waited=0
 while kill -0 "$pid" 2>/dev/null; do
