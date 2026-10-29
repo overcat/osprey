@@ -15,13 +15,18 @@ var commands = []struct{ line, does string }{
 
 func (a *app) welcome(c *ui.Context) {
 	t := c.Theme()
-	_, height := c.Size()
+	height := contentHeight(c)
 	roomy := height >= 700 // room for the picture and the keys
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
-		ui.Row(c).Height(headerHeight).Shrink(0).FillWidth().Padding(0, c.TitleBar().Right+10, 0, 0).
-			Justify(ui.End).AlignItems(ui.Center).DragWindow().Children(func() { a.menuButton(c) })
+		// The room of macOS's window controls, as the toolbar's; the
+		// window's own title bar holds them elsewhere.
+		top := float32(0)
+		if !ownTitleBar {
+			top = headerHeight
+			ui.Row(c).Height(top).Shrink(0).FillWidth().DragWindow()
+		}
 		ui.Scroll(c).Grow(1).Children(func() {
-			ui.Column(c).FillWidth().MinHeight(height-headerHeight).Center().Gap(6).Padding(0, 32, 32, 32).Children(func() {
+			ui.Column(c).FillWidth().MinHeight(height-top).Center().Gap(6).Padding(0, 32, 32, 32).Children(func() {
 				if roomy {
 					ui.Image(c, brandImage).Size(96, 96).Margin(0, 0, 12, 0)
 				}

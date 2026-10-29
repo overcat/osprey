@@ -10,11 +10,20 @@ import (
 	"github.com/overcat/osprey/internal/changes"
 )
 
-// headerHeight is the height of the toolbar along the top, under the
-// window controls, which line up with its own: mygo.WindowOptions'
-// TrafficLightPosition centers them in it on macOS, and TitleBarHeight
-// makes Windows' as tall as it, and centers Linux's.
+// headerHeight is the height of the toolbar along the top: on macOS under
+// the window controls, which mygo.WindowOptions.TrafficLightPosition
+// centers in it, and elsewhere under the window's own title bar.
 const headerHeight = 52
+
+// ownTitleBar is whether the window draws a title bar of its own above the
+// toolbar, off macOS: the window's buttons sit in it, wherever the desktop
+// puts them, clear of the toolbar, with a button that opens the menus,
+// which a window without its system title bar doesn't show there.
+var ownTitleBar = runtime.GOOS != "darwin"
+
+// titleBarHeight is the height of the window's own title bar, as Windows
+// 11's: mygo.WindowOptions.TitleBarHeight fits the window's buttons in it.
+const titleBarHeight = 32
 
 // fileHeadingHeight is the height of the bar over each file.
 const fileHeadingHeight = 38
@@ -30,15 +39,61 @@ func (a *app) view(c *ui.Context) {
 	a.sidebarWidth = min(max(a.sidebarWidth, 220), min(400, max(220, w-440)))
 	a.followFeed()
 	a.syncSelection()
-	switch {
-	case a.src == nil:
-		a.welcome(c)
-	case a.sidebarHidden:
-		a.main(c)
-	default:
-		ui.Split(c, &a.sidebarWidth, func() { a.sidebar(c) }, func() { a.main(c) }).Fill()
+	content := func() {
+		switch {
+		case a.src == nil:
+			a.welcome(c)
+		case a.sidebarHidden:
+			a.main(c)
+		default:
+			ui.Split(c, &a.sidebarWidth, func() { a.sidebar(c) }, func() { a.main(c) }).Fill()
+		}
+	}
+	if ownTitleBar {
+		ui.Column(c).Fill().Children(func() {
+			a.titleBar(c)
+			ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(content)
+		})
+	} else {
+		content()
 	}
 	ui.Modal(c, &a.shortcutsOpen, func() { shortcutsPanel(c) })
+}
+
+// titleBar is the window's own title bar (ownTitleBar): the window's
+// buttons, and the button that opens the menu bar's menus under it, with
+// the app's name.
+func (a *app) titleBar(c *ui.Context) {
+	t := c.Theme()
+	bar := c.TitleBar()
+	ui.Row(c).Height(titleBarHeight).Shrink(0).FillWidth().Padding(0, bar.Right+8, 0, bar.Left+6).Gap(4).
+		AlignItems(ui.Center).Background(sidebarFill(t)).DragWindow().Children(func() {
+		b := iconButton(c, iconMenu, "Menu", "")
+		if b.Clicked() && a.win != nil {
+			r := b.Bounds()
+			go a.appMenu.PopupAt(a.win, int(r.X), int(r.Y+r.H))
+		}
+		ui.Text(c, "Osprey").FontSize(12).TextColor(t.TextMuted).SingleLine()
+	})
+}
+
+// contentHeight is the height of the window under its own title bar.
+func contentHeight(c *ui.Context) float32 {
+	_, h := c.Size()
+	if ownTitleBar {
+		h -= titleBarHeight
+	}
+	return h
+}
+
+// windowControls is the room the window's controls take in the row of the
+// toolbar: the traffic lights on macOS, and none elsewhere, where the
+// window's own title bar holds them.
+func windowControls(c *ui.Context) ui.TitleBar {
+	if ownTitleBar {
+		return ui.TitleBar{}
+	}
+	return c.TitleBar()
 }
 
 // main is the pane of the files: its toolbar, then the feed or the file
@@ -75,11 +130,9 @@ func (a *app) paneWidth(c *ui.Context) float32 {
 // toolbar is the window's title and its controls, in the title bar.
 func (a *app) toolbar(c *ui.Context) {
 	t := c.Theme()
-	bar := c.TitleBar()
+	bar := windowControls(c)
 	f := a.current()
-	// room is the pane's width but for the window's buttons, which take
-	// the right end of the title bar off macOS.
-	room := a.paneWidth(c) - bar.Right
+	pane := a.paneWidth(c)
 	left := float32(16)
 	if a.sidebarHidden {
 		left = bar.Left + 8
@@ -91,11 +144,11 @@ func (a *app) toolbar(c *ui.Context) {
 		}
 		a.windowTitle(c)
 		if f != nil && a.loaded {
-			a.fileOptions(c, f, room)
+			a.fileOptions(c, f, pane)
 			toolbarSeparator(c)
 		}
 		mode := a.browseMode
-		if room >= 820 {
+		if pane >= 820 {
 			segmented(c, "mode", &mode, "Continuous", "Single File").Tooltip("Continuous or single file")
 		} else if toggleIcon(c, iconFocus, "Single File", "", mode == modeSingle).Clicked() {
 			mode = flip(mode)
@@ -103,7 +156,7 @@ func (a *app) toolbar(c *ui.Context) {
 		if mode != a.browseMode {
 			a.setBrowseMode(mode)
 		}
-		if room >= 600 {
+		if pane >= 600 {
 			if iconButton(c, iconRefresh, "Refresh", keyRefresh).Clicked() {
 				a.refresh()
 			}
@@ -111,26 +164,7 @@ func (a *app) toolbar(c *ui.Context) {
 				go a.chooseRepo()
 			}
 		}
-		a.menuButton(c)
 	})
-}
-
-// menuInWindow is whether the window shows a button for the menus: off
-// macOS, menu bars belong to windows, and one without its title bar, as
-// Osprey's, shows none; only Alt or F10 would open its menus.
-var menuInWindow = runtime.GOOS != "darwin"
-
-// menuButton opens the menu bar's menus under it, where the window shows
-// no menu bar.
-func (a *app) menuButton(c *ui.Context) {
-	if !menuInWindow {
-		return
-	}
-	b := iconButton(c, iconMenu, "Menu", "")
-	if b.Clicked() && a.win != nil {
-		r := b.Bounds()
-		go a.appMenu.PopupAt(a.win, int(r.X), int(r.Y+r.H))
-	}
 }
 
 // windowTitle names the repository and its branch, over what is compared,
@@ -162,34 +196,31 @@ func (a *app) comparisonLabel() string {
 	return label + changes.PathsLabel(a.repo.paths)
 }
 
-// fileOptions are the toolbar's controls of how the file shows. Where
-// there is no room for the toggles of the view, the View menu has them.
-func (a *app) fileOptions(c *ui.Context, f *file, room float32) {
+// fileOptions are the toolbar's controls of how the file shows.
+func (a *app) fileOptions(c *ui.Context, f *file, pane float32) {
 	segmented(c, "page", &a.page, "Diff", "Full File").Tooltip("Diff or full file")
 	diff := a.page == pageDiff && f.hasText()
-	if room >= 420 {
-		if diff && !f.oneSided() {
-			if room >= 900 {
-				segmented(c, "layout", &a.layout, "Split", "Unified").Tooltip("Split or unified")
-			} else if toggleIcon(c, iconSplit, "Unified", "", a.layout == layoutUnified).Clicked() {
-				a.layout = flip(a.layout)
-			}
+	if diff && !f.oneSided() {
+		if pane >= 900 {
+			segmented(c, "layout", &a.layout, "Split", "Unified").Tooltip("Split or unified")
+		} else if toggleIcon(c, iconSplit, "Unified", "", a.layout == layoutUnified).Clicked() {
+			a.layout = flip(a.layout)
 		}
-		if diff && toggleIcon(c, iconExpand, "Show unchanged lines", "", a.expand).Clicked() {
-			a.expand = !a.expand
-		}
-		if toggleIcon(c, iconWrap, "Wrap lines", "", a.wrap).Clicked() {
-			a.wrap = !a.wrap
-		}
+	}
+	if diff && toggleIcon(c, iconExpand, "Show unchanged lines", "", a.expand).Clicked() {
+		a.expand = !a.expand
+	}
+	if toggleIcon(c, iconWrap, "Wrap lines", "", a.wrap).Clicked() {
+		a.wrap = !a.wrap
 	}
 	if diff {
 		toolbarSeparator(c)
-		a.hunkNav(c, f, room)
+		a.hunkNav(c, f, pane)
 	}
 }
 
 // hunkNav goes to the changes of f, and counts them where there is room.
-func (a *app) hunkNav(c *ui.Context, f *file, room float32) {
+func (a *app) hunkNav(c *ui.Context, f *file, pane float32) {
 	t := c.Theme()
 	d := f.diffView(a.browseMode)
 	n := len(d.Hunks())
@@ -199,7 +230,7 @@ func (a *app) hunkNav(c *ui.Context, f *file, room float32) {
 	if iconButton(c, iconChevronUp, "Previous change", keyPreviousChange).Clicked() {
 		a.stepHunk(-1)
 	}
-	if room >= 900 {
+	if pane >= 900 {
 		label := plural(n, "change")
 		if i, inside := d.CurrentHunk(); inside {
 			label = fmt.Sprintf("%d of %d", i+1, n)
