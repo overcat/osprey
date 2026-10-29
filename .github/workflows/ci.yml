@@ -14,16 +14,21 @@ concurrency:
 
 jobs:
   test:
-    name: ${{ matrix.name }}
+    name: Test on ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # slug is the folder mygo builds the platform's app into. Linux x64
+      # checks what is the same everywhere, and packages Windows x64's app
+      # too, with its installer, as the Release workflow does.
       matrix:
         include:
-          - { name: Linux, os: ubuntu-latest }
-          - { name: macOS, os: macos-latest }
-          - { name: Windows, os: windows-latest }
+          - { name: Linux x64, slug: linux-amd64, os: ubuntu-latest, platforms: "linux/amd64,windows/amd64", checks: true }
+          - { name: Linux ARM, slug: linux-arm64, os: ubuntu-24.04-arm, platforms: linux/arm64 }
+          - { name: macOS ARM, slug: darwin-arm64, os: macos-latest, platforms: darwin/arm64 }
+          - { name: Windows x64, slug: windows-amd64, os: windows-latest, platforms: windows/amd64 }
+          - { name: Windows ARM, slug: windows-arm64, os: windows-11-arm, platforms: windows/arm64 }
     defaults:
       run:
         shell: bash
@@ -42,20 +47,18 @@ jobs:
           sudo apt-get install -y --no-install-recommends libgtk-3-0 libpangocairo-1.0-0 fonts-dejavu-core xvfb nsis
 
       - name: Check formatting
-        if: runner.os == 'Linux'
+        if: matrix.checks
         run: test -z "$(gofmt -l . | tee /dev/stderr)"
       - name: Check that go.mod and go.sum are tidy
-        if: runner.os == 'Linux'
+        if: matrix.checks
         run: go mod tidy -diff
-      - name: Vet and build for every platform
-        if: runner.os == 'Linux'
+      - name: Vet for every platform
+        if: matrix.checks
         run: |
           for os in darwin linux windows; do
             GOOS=$os go vet ./...
             GOOS=$os go vet -tags mygo_noinspector ./...
           done
-          GOOS=linux GOARCH=arm64 go build -o /dev/null .
-          GOOS=windows GOARCH=arm64 go build -o /dev/null .
 
       - name: Test
         if: runner.os != 'Windows'
@@ -64,34 +67,28 @@ jobs:
         if: runner.os == 'Windows'
         run: go test ./...
 
-      # Each platform packages its own app; Linux packages Windows's too,
-      # with its installer, as the Release workflow does.
       - name: Package
         run: |
-          case "$RUNNER_OS" in
-            Linux)
-              scripts/windows-launchers.sh
-              go tool mygo build -platform linux/amd64,windows/amd64 -o "$RUNNER_TEMP/build" ;;
-            macOS)
-              go tool mygo build -o "$RUNNER_TEMP/build" ;;
-            Windows)
-              scripts/windows-launchers.sh
-              go tool mygo build -platform windows/amd64 -o "$RUNNER_TEMP/build" ;;
+          case "${{ matrix.platforms }}" in
+            *windows*) scripts/windows-launchers.sh ;;
           esac
+          go tool mygo build -platform "${{ matrix.platforms }}" -o "$RUNNER_TEMP/build"
 
       - name: Open a repository in Osprey, and save a picture of the window
         run: |
+          app="$RUNNER_TEMP/build/${{ matrix.slug }}"
+          shot="$RUNNER_TEMP/shots/${{ matrix.slug }}.png"
           case "$RUNNER_OS" in
-            Linux) xvfb-run -a scripts/smoke-test.sh "$RUNNER_TEMP/build/linux-amd64/osprey" "$RUNNER_TEMP/shots/linux.png" ;;
-            macOS) scripts/smoke-test.sh "$RUNNER_TEMP/build/darwin-arm64/Osprey.app/Contents/MacOS/Osprey" "$RUNNER_TEMP/shots/macos.png" ;;
-            Windows) scripts/smoke-test.sh "$RUNNER_TEMP/build/windows-amd64/Osprey.exe" "$RUNNER_TEMP/shots/windows.png" ;;
+            Linux) xvfb-run -a scripts/smoke-test.sh "$app/osprey" "$shot" ;;
+            macOS) scripts/smoke-test.sh "$app/Osprey.app/Contents/MacOS/Osprey" "$shot" ;;
+            Windows) scripts/smoke-test.sh "$app/Osprey.exe" "$shot" ;;
           esac
 
-      - name: Check the command line on Windows, through osp.exe and osprey.com
+      - name: Check the command line, through osp.exe and osprey.com
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $app = Join-Path $env:RUNNER_TEMP 'build\windows-amd64'
+          $app = Join-Path $env:RUNNER_TEMP 'build\${{ matrix.slug }}'
           $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
           $out = & "$app\osprey.com" --version
           if ($LASTEXITCODE -ne 0 -or $out -ne "osprey $version") { throw "osprey.com --version: exit $LASTEXITCODE, '$out'" }
@@ -107,15 +104,16 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: osprey-window-${{ matrix.name }}
+          name: window-${{ matrix.slug }}
           if-no-files-found: warn
           retention-days: 14
           path: ${{ runner.temp }}/shots/
-      # The app goes as its .dmg: an artifact keeps no executable bits.
+      # The macOS app goes as its .dmg: an artifact keeps no executable bits.
+      # Windows's apps go from Linux x64, which makes their installer.
       - uses: actions/upload-artifact@v7
         if: runner.os != 'Windows'
         with:
-          name: osprey-${{ matrix.name }}-${{ github.sha }}
+          name: packages-${{ matrix.slug }}
           if-no-files-found: error
           retention-days: 14
           path: |

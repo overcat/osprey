@@ -12,18 +12,19 @@ permissions:
 
 jobs:
   build:
-    name: Build for ${{ matrix.target }}
+    name: Build for ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # slug is the folder mygo builds the platform's app into.
       matrix:
         include:
-          - { target: darwin/arm64, slug: macos-arm64, os: macos-latest }
-          - { target: linux/amd64, slug: linux-amd64, os: ubuntu-latest }
-          - { target: linux/arm64, slug: linux-arm64, os: ubuntu-latest }
-          - { target: windows/amd64, slug: windows-amd64, os: ubuntu-latest }
-          - { target: windows/arm64, slug: windows-arm64, os: ubuntu-latest }
+          - { name: Linux x64, slug: linux-amd64, target: linux/amd64, os: ubuntu-latest }
+          - { name: Linux ARM, slug: linux-arm64, target: linux/arm64, os: ubuntu-latest }
+          - { name: macOS ARM, slug: darwin-arm64, target: darwin/arm64, os: macos-latest }
+          - { name: Windows x64, slug: windows-amd64, target: windows/amd64, os: ubuntu-latest }
+          - { name: Windows ARM, slug: windows-arm64, target: windows/arm64, os: ubuntu-latest }
     steps:
       - uses: actions/checkout@v7
       - name: Check that the tag is the version in mygo.json
