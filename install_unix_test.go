@@ -110,3 +110,44 @@ func TestInstallInHome(t *testing.T) {
 		t.Fatalf("with it on the PATH, said %q, %v", said, err)
 	}
 }
+
+// uninstall-cli takes out the links install-cli made, with their
+// completions, and leaves another program's alone.
+func TestUninstallCLI(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin, share := filepath.Join(dir, "prefix", "bin"), filepath.Join(dir, "prefix", "share")
+	for _, d := range []string{bin, filepath.Join(share, "zsh", "site-functions"), filepath.Join(share, "bash-completion", "completions")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exe := filepath.Join(dir, "Osprey.app", "Contents", "MacOS", "Osprey")
+	os.MkdirAll(filepath.Dir(exe), 0o755)
+	if err := os.WriteFile(exe, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := linkIn(bin, exe); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(bin, "other")
+	if err := os.Symlink("/bin/true", other); err != nil {
+		t.Fatal(err)
+	}
+	if took, err := unlinkIn(bin); err != nil || !took {
+		t.Fatalf("took %v, %v", took, err)
+	}
+	for _, p := range []string{filepath.Join(bin, "osprey"), filepath.Join(bin, "osp"), filepath.Join(share, "zsh", "site-functions", "_osprey"), filepath.Join(share, "bash-completion", "completions", "osp")} {
+		if _, err := os.Lstat(p); err == nil {
+			t.Errorf("%s is still there", p)
+		}
+	}
+	if _, err := os.Lstat(other); err != nil {
+		t.Errorf("another program's link went too: %v", err)
+	}
+	if took, err := unlinkIn(bin); err != nil || took {
+		t.Errorf("taking them out again: took %v, %v", took, err)
+	}
+}

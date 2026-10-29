@@ -4,7 +4,9 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -133,23 +135,16 @@ func installCompletions(bin string) []string {
 	}
 	_, fishErr := exec.LookPath("fish")
 	var shells []string
-	for _, s := range []struct {
-		shell, dir string
-		create     bool
-		files      map[string][]string // the commands each file completes
-	}{
-		{"fish", filepath.Join(share, "fish", "vendor_completions.d"), fishErr == nil, map[string][]string{"osprey.fish": {"osprey"}, "osp.fish": {"osp"}}},
-		{"zsh", filepath.Join(share, "zsh", "site-functions"), false, map[string][]string{"_osprey": names}},
-		{"bash", filepath.Join(share, "bash-completion", "completions"), false, map[string][]string{"osprey": names, "osp": names}},
-	} {
-		if !isDir(s.dir) && (!s.create || os.MkdirAll(s.dir, 0o755) != nil) {
+	for _, s := range completionFiles {
+		dir := filepath.Join(share, s.dir)
+		if !isDir(dir) && (s.shell != "fish" || fishErr != nil || os.MkdirAll(dir, 0o755) != nil) {
 			continue
 		}
 		ok := true
 		for file, commands := range s.files {
 			var script bytes.Buffer
 			completion(&script, s.shell, commands...)
-			if os.WriteFile(filepath.Join(s.dir, file), script.Bytes(), 0o644) != nil {
+			if os.WriteFile(filepath.Join(dir, file), script.Bytes(), 0o644) != nil {
 				ok = false
 			}
 		}
@@ -158,6 +153,66 @@ func installCompletions(bin string) []string {
 		}
 	}
 	return shells
+}
+
+// completionFiles are the scripts installCompletions writes for each
+// shell, in its folder under share, with the commands each completes.
+var completionFiles = []struct {
+	shell, dir string
+	files      map[string][]string
+}{
+	{"fish", "fish/vendor_completions.d", map[string][]string{"osprey.fish": {"osprey"}, "osp.fish": {"osp"}}},
+	{"zsh", "zsh/site-functions", map[string][]string{"_osprey": names}},
+	{"bash", "bash-completion/completions", map[string][]string{"osprey": names, "osp": names}},
+}
+
+// uninstallCLI removes the osprey and osp of Osprey from the usual
+// directories of the PATH, with their completions, as install-cli put
+// them, and says where from.
+func uninstallCLI() (string, error) {
+	var from []string
+	for _, d := range binDirs() {
+		took, err := unlinkIn(d)
+		if errors.Is(err, fs.ErrPermission) {
+			exe, _ := os.Executable()
+			return "", fmt.Errorf("%w: run sudo %q uninstall-cli", err, exe)
+		} else if err != nil {
+			return "", err
+		}
+		if took {
+			from = append(from, d)
+		}
+	}
+	if len(from) == 0 {
+		return "osprey and osp weren't on your PATH.", nil
+	}
+	return "osprey and osp are out of " + andList(from) + ".", nil
+}
+
+// unlinkIn removes from dir the links osprey and osp to Osprey, as
+// install-cli makes them, with the completions beside them, and reports
+// whether there were any.
+func unlinkIn(dir string) (bool, error) {
+	took := false
+	for _, name := range names {
+		link := filepath.Join(dir, name)
+		if target, err := os.Readlink(link); err != nil || !strings.Contains(strings.ToLower(target), "osprey") {
+			continue
+		}
+		if err := os.Remove(link); err != nil {
+			return took, err
+		}
+		took = true
+	}
+	if took && filepath.Base(dir) == "bin" {
+		share := filepath.Join(filepath.Dir(dir), "share")
+		for _, s := range completionFiles {
+			for file := range s.files {
+				os.Remove(filepath.Join(share, s.dir, file))
+			}
+		}
+	}
+	return took, nil
 }
 
 // andList writes words as a list: "a, b and c".

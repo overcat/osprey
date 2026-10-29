@@ -16,6 +16,10 @@ func TestCompletion(t *testing.T) {
 				t.Errorf("%s: no %q in\n%s", shell, want, script.String())
 			}
 		}
+		// zsh's completes the arguments of a comparison alone.
+		if shell != "zsh" && (!strings.Contains(script.String(), "install-cli") || !strings.Contains(script.String(), "uninstall-cli")) {
+			t.Errorf("%s: no install-cli and uninstall-cli in\n%s", shell, script.String())
+		}
 	}
 	// fish loads a command's completions from the file of its name.
 	var fish strings.Builder

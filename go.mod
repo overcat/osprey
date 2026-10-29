@@ -3,7 +3,7 @@ module github.com/overcat/osprey
 go 1.27.3
 
 require (
-	github.com/egoist/mygo v0.7.1
+	github.com/egoist/mygo v0.7.3
 	golang.org/x/sys v0.49.0
 )
 

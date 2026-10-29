@@ -28,13 +28,14 @@ func completion(w io.Writer, shell string, commands ...string) error {
 	case "fish":
 		for _, name := range commands {
 			c := "complete -c " + name
-			fmt.Fprintf(w, "%s -n 'not __fish_seen_subcommand_from install-cli completion' -a \"(%s)\" -d ref\n", c, refs)
+			fmt.Fprintf(w, "%s -n 'not __fish_seen_subcommand_from install-cli uninstall-cli completion' -a \"(%s)\" -d ref\n", c, refs)
 			fmt.Fprintf(w, "%s -s C -r -a '(__fish_complete_directories)' -d 'run as if started in this directory'\n", c)
 			fmt.Fprintf(w, "%s -l committed -d 'leave out what is not committed yet'\n", c)
 			fmt.Fprintf(w, "%s -s w -l wait -d 'return only when the window closes'\n", c)
 			fmt.Fprintf(w, "%s -s h -l help -d 'show the help'\n", c)
 			fmt.Fprintf(w, "%s -s v -l version -d 'show the version'\n", c)
 			fmt.Fprintf(w, "%s -n __fish_use_subcommand -a install-cli -d 'put osprey and osp on your PATH'\n", c)
+			fmt.Fprintf(w, "%s -n __fish_use_subcommand -a uninstall-cli -d 'take them off your PATH'\n", c)
 			fmt.Fprintf(w, "%s -n __fish_use_subcommand -a completion -d 'print a completion script'\n", c)
 			fmt.Fprintf(w, "%s -n '__fish_seen_subcommand_from install-cli' -f -a '(__fish_complete_directories)'\n", c)
 			fmt.Fprintf(w, "%s -n '__fish_seen_subcommand_from completion' -f -a 'fish zsh bash'\n", c)
@@ -69,7 +70,7 @@ fi
     COMPREPLY=($(compgen -W "fish zsh bash" -- "$cur"))
     return
   fi
-  COMPREPLY=($(compgen -W "$(%s) -C --committed -w --wait -h --help -v --version install-cli completion" -- "$cur") $(compgen -f -- "$cur"))
+  COMPREPLY=($(compgen -W "$(%s) -C --committed -w --wait -h --help -v --version install-cli uninstall-cli completion" -- "$cur") $(compgen -f -- "$cur"))
 }
 complete -F _osprey %s
 `, refs, strings.Join(commands, " "))

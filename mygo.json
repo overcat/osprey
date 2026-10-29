@@ -8,6 +8,9 @@
   "macos": {
     "minimumSystemVersion": "13.0"
   },
+  "windows": {
+    "installerInclude": "scripts/windows-installer.nsh"
+  },
   "linux": {
     "webview": false,
     "command": "osprey",
