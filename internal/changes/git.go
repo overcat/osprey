@@ -16,11 +16,12 @@ import (
 // command is git in dir, with optional locks off, so that reading the
 // repository never writes its index, which a watch would see as a change,
 // with its messages in English, to parse, and with paths taken as they
-// are written, rather than as patterns.
+// are written, rather than as patterns. On Windows it opens no window.
 func command(dir string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(cmd.Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_LITERAL_PATHSPECS=1")
+	cmd.SysProcAttr = windowless()
 	return cmd
 }
 
