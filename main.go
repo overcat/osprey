@@ -90,6 +90,7 @@ func main() {
 			StateKey:             "main",
 			TitleBarStyle:        mygo.TitleBarHidden,
 			TrafficLightPosition: &mygo.Point{X: 18, Y: (headerHeight - 14) / 2},
+			TitleBarHeight:       headerHeight,
 			Vibrancy:             sidebarMaterial(),
 			Content:              ui.View(a.view),
 		})

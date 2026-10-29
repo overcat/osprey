@@ -11,8 +11,9 @@ import (
 )
 
 // headerHeight is the height of the toolbar along the top, under the
-// window controls (mygo.WindowOptions.TrafficLightPosition centers them in
-// it).
+// window controls, which line up with its own: mygo.WindowOptions'
+// TrafficLightPosition centers them in it on macOS, and TitleBarHeight
+// makes Windows' as tall as it, and centers Linux's.
 const headerHeight = 52
 
 // fileHeadingHeight is the height of the bar over each file.
