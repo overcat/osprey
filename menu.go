@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"runtime"
 
 	"github.com/egoist/mygo"
@@ -82,17 +81,20 @@ func (a *app) helpMenu(item func(label, key string, fn func()) *mygo.MenuItem) *
 	return help
 }
 
-// installFromMenu installs the command line tool, as osp install-cli
-// does, and says where.
-func (a *app) installFromMenu() {
+// installCommands installs the command line tool, as osp install-cli
+// does, and keeps what it said for the welcome page. It blocks, on a
+// goroutine of its own.
+func (a *app) installCommands() (string, error) {
 	said, err := installCLI("")
+	a.win.Update(func() { a.cli = cliState{missing: err != nil, said: said, err: err} })
+	return said, err
+}
+
+// installFromMenu installs the command line tool, and says where.
+func (a *app) installFromMenu() {
+	said, err := a.installCommands()
 	if err != nil {
-		detail := err.Error()
-		if runtime.GOOS != "windows" {
-			exe, _ := os.Executable()
-			detail += "\n\nRun this in a terminal instead:\n  " + exe + " install-cli ~/bin"
-		}
-		mygo.Dialog.Error("Couldn't install the command line tool", detail)
+		mygo.Dialog.Error("Couldn't install the command line tool", err.Error())
 		return
 	}
 	mygo.Dialog.Message(mygo.MessageOptions{
