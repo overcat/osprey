@@ -1,18 +1,71 @@
-# Pushing a tag of the date, as scripts/release.sh does, builds Osprey for
-# every platform, each in a job of its own, then puts what they built into
-# a draft release, to check and publish by hand. The builds are not signed.
+# Releases Osprey: run it on main from the Actions tab (Release → Run
+# workflow), or with gh workflow run Release. Once CI passed main, it
+# versions the release by today's date in UTC, as 2026.10.29, or
+# 2026.10.29.1 for another release that day: it commits the version to
+# mygo.json, tags that commit with it, builds every platform, each in a job
+# of its own, and puts what they built into a draft release, to check and
+# publish by hand. The builds are not signed.
 name: Release
 
 on:
-  push:
-    tags: ["[0-9][0-9][0-9][0-9].*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read # to see CI's runs
+
+concurrency:
+  group: release
 
 jobs:
+  tag:
+    name: Tag the release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check that it runs on main
+        run: test "$GITHUB_REF" = refs/heads/main || { echo "::error::Run the release on main, not on $GITHUB_REF_NAME"; exit 1; }
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # A release's own commit sets the version alone, and CI doesn't run on
+      # what a workflow pushes: what CI must have passed is the last commit
+      # before the releases'.
+      - name: Check that CI passed main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tested="$(git log -1 --format=%H --invert-grep --grep='^Release [0-9]')"
+          ci="$(gh run list --workflow CI --branch main --commit "$tested" --json conclusion --jq '.[0].conclusion')"
+          test "$ci" = success || { echo "::error::CI hasn't passed $tested: ${ci:-no run found}"; exit 1; }
+      - name: Version the release by today's date
+        id: version
+        run: |
+          version="$(date -u +%Y).$(date -u +%-m).$(date -u +%-d)"
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            n=1
+            while git rev-parse -q --verify "refs/tags/$version.$n" >/dev/null; do
+              n=$((n + 1))
+            done
+            version="$version.$n"
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+      - name: Commit the version to mygo.json, and tag the commit
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          sed -i "s/^\(  \"version\": \"\)[^\"]*\"/\1$VERSION\"/" mygo.json
+          grep -q "\"version\": \"$VERSION\"" mygo.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Release $VERSION" mygo.json
+          git tag -a "$VERSION" -m "Osprey $VERSION"
+          git push --atomic origin HEAD:main "$VERSION"
+
   build:
     name: Build for ${{ matrix.name }}
+    needs: tag
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -25,10 +78,14 @@ jobs:
           - { name: macOS ARM, slug: darwin-arm64, target: darwin/arm64, os: macos-latest }
           - { name: Windows x64, slug: windows-amd64, target: windows/amd64, os: ubuntu-latest }
           - { name: Windows ARM, slug: windows-arm64, target: windows/arm64, os: ubuntu-latest }
+    env:
+      VERSION: ${{ needs.tag.outputs.version }}
     steps:
       - uses: actions/checkout@v7
-      - name: Check that the tag is the version in mygo.json
-        run: test "$GITHUB_REF_NAME" = "$(jq -r .version mygo.json)"
+        with:
+          ref: ${{ needs.tag.outputs.version }}
+      - name: Check that mygo.json has the version
+        run: test "$VERSION" = "$(jq -r .version mygo.json)"
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -46,12 +103,11 @@ jobs:
       # programs alone, which run without installing.
       - name: Collect the assets
         run: |
-          version="$GITHUB_REF_NAME"
           mkdir assets
           for dir in dist/*/; do
             target="$(basename "$dir")"
             case "$target" in
-              windows-*) (cd "$dir" && zip -q "$GITHUB_WORKSPACE/assets/osprey-$version-$target.zip" Osprey.exe osp.exe osprey.com LICENSE THIRD_PARTY_NOTICES.md) ;;
+              windows-*) (cd "$dir" && zip -q "$GITHUB_WORKSPACE/assets/osprey-$VERSION-$target.zip" Osprey.exe osp.exe osprey.com LICENSE THIRD_PARTY_NOTICES.md) ;;
             esac
             find "$dir" -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.tar.gz' -o -name '*-setup-*.exe' \) -exec cp {} assets/ \;
           done
@@ -64,7 +120,7 @@ jobs:
   # Only once every platform built: a release never misses one.
   release:
     name: Draft the release
-    needs: build
+    needs: [tag, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -76,8 +132,9 @@ jobs:
       - name: Put the assets, with their checksums, into a draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.tag.outputs.version }}
         run: |
-          (cd assets && shasum -a 256 * > SHA256SUMS.txt)
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes --title "Osprey $GITHUB_REF_NAME"
-          gh release upload "$GITHUB_REF_NAME" assets/* --clobber
+          (cd assets && shasum -a 256 * >SHA256SUMS.txt)
+          gh release view "$VERSION" >/dev/null 2>&1 ||
+            gh release create "$VERSION" --draft --verify-tag --generate-notes --title "Osprey $VERSION"
+          gh release upload "$VERSION" assets/* --clobber
