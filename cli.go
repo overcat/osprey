@@ -51,6 +51,7 @@ Examples:
 
 Commands:
   osp install-cli [<dir>]    put osprey and osp on your PATH, with completions
+  osp uninstall-cli          take them off your PATH
   osp completion <shell>     print the completion script of fish, zsh or bash
 
 As git difftool:

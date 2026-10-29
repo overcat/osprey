@@ -66,6 +66,45 @@ func onPath(folder string) string {
 	return folder + " is on your PATH: osprey and osp work in new terminals."
 }
 
+// uninstallCLI takes the folder of Osprey.exe off the user's PATH, as the
+// uninstaller does, keeping the rest of the PATH as it was, and says so.
+func uninstallCLI() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	folder := filepath.Dir(exe)
+	key, err := registry.OpenKey(registry.CURRENT_USER, "Environment", registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return "", err
+	}
+	defer key.Close()
+	path, kind, err := key.GetStringValue("Path")
+	if err != nil && !errors.Is(err, registry.ErrNotExist) {
+		return "", err
+	}
+	var kept []string
+	for _, p := range strings.Split(path, ";") {
+		if !pathHas(p, folder) {
+			kept = append(kept, p)
+		}
+	}
+	left := strings.Join(kept, ";")
+	if left == path {
+		return folder + " wasn't on your PATH.", nil
+	}
+	if kind == registry.SZ {
+		err = key.SetStringValue("Path", left)
+	} else {
+		err = key.SetExpandStringValue("Path", left)
+	}
+	if err != nil {
+		return "", err
+	}
+	announceEnvironment()
+	return folder + " is off your PATH.", nil
+}
+
 // cliMissing reports whether the folder of Osprey.exe, with osp.exe and
 // osprey.com, isn't on the PATH yet: the user's, as the registry keeps it
 // for new terminals, or this program's.

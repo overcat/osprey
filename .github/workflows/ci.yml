@@ -97,7 +97,27 @@ jobs:
           & "$app\osp.exe" install-cli
           if ($LASTEXITCODE -ne 0) { throw "osp.exe install-cli: exit $LASTEXITCODE" }
           if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -notcontains $app) { throw "install-cli didn't put $app on the PATH" }
+          & "$app\osp.exe" uninstall-cli
+          if ($LASTEXITCODE -ne 0) { throw "osp.exe uninstall-cli: exit $LASTEXITCODE" }
+          if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $app) { throw "uninstall-cli left $app on the PATH" }
           exit 0
+
+      # The installer puts Osprey's folder on the PATH, and its uninstaller
+      # takes it off (scripts/windows-installer.nsh).
+      - name: Install Osprey with its installer, and uninstall it
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'build\${{ matrix.slug }}') -Filter 'osprey-setup-*.exe' | Select-Object -First 1
+          $folder = Join-Path $env:LOCALAPPDATA 'Programs\Osprey'
+          $onPath = { ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $folder }
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          if (-not (Test-Path "$folder\osp.exe")) { throw "the installer put no osp.exe in $folder" }
+          if (-not (& $onPath)) { throw "the installer didn't put $folder on the PATH" }
+          # With _?, the uninstaller runs in place, rather than from a copy
+          # of itself, which Start-Process wouldn't wait for.
+          Start-Process "$folder\Uninstall.exe" -ArgumentList '/S', "_?=$folder" -Wait
+          if (& $onPath) { throw "the uninstaller left $folder on the PATH" }
 
       # The picture goes up from a failed run too, to see what it showed.
       - uses: actions/upload-artifact@v7

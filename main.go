@@ -36,6 +36,13 @@ func main() {
 			}
 			fmt.Println(said)
 			return
+		case "uninstall-cli":
+			said, err := uninstallCLI()
+			if err != nil {
+				fail(err)
+			}
+			fmt.Println(said)
+			return
 		case "completion":
 			if len(args) < 2 {
 				failUsage(errors.New("which shell: osp completion fish, zsh or bash\n" + completionGuide))
