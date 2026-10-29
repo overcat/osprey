@@ -92,3 +92,33 @@ func TestAgo(t *testing.T) {
 		}
 	}
 }
+
+// Off macOS, where the window's own title bar holds the window's controls,
+// the sidebar's tabs take its top row, beside the toolbar, and end on the
+// line under it; on macOS they go under that row, which the controls take.
+func TestSidebarTabsInTopRow(t *testing.T) {
+	defer func(own bool) { ownTitleBar = own }(ownTitleBar)
+	for _, own := range []bool{true, false} {
+		ownTitleBar = own
+		a := historyFixture()
+		h := ui.NewTester(a.view, 1280, 820)
+		top := float32(0)
+		if own {
+			top = titleBarHeight
+		}
+		tab, ok := h.Find("History")
+		if !ok {
+			t.Fatalf("own title bar %v: no History tab", own)
+		}
+		if d := tab.Y + tab.H - (top + headerHeight); own && (d < -1 || d > 1) {
+			t.Errorf("own title bar: the tab at %+v doesn't end on the toolbar's line, at %v", tab, top+headerHeight)
+		}
+		if !own && tab.Y < top+headerHeight {
+			t.Errorf("macOS: the tab at %+v is in the row of the window's controls", tab)
+		}
+		click(t, h, "History")
+		if a.sideTab != tabHistory {
+			t.Errorf("own title bar %v: the History tab didn't open the history", own)
+		}
+	}
+}
