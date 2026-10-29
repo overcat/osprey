@@ -21,7 +21,7 @@ func (a *app) sidebar(c *ui.Context) {
 	}
 	side.Children(func() {
 		a.sidebarTop(c)
-		if a.repo != nil {
+		if a.repo != nil && !ownTitleBar {
 			a.sidebarTabs(c)
 		}
 		if a.repo != nil && a.sideTab == tabHistory {
@@ -36,42 +36,64 @@ func (a *app) sidebar(c *ui.Context) {
 }
 
 // sidebarTop is the sidebar's row beside the toolbar, with the button
-// hiding the sidebar, and room for macOS's window controls.
+// hiding the sidebar: on macOS with room for the window's controls, and
+// elsewhere, where the window's own title bar holds them, with the tabs,
+// on the line under the toolbar.
 func (a *app) sidebarTop(c *ui.Context) {
-	bar := windowControls(c)
-	ui.Row(c).Height(headerHeight).Shrink(0).Padding(0, 10, 0, bar.Left+8).AlignItems(ui.Center).Justify(ui.End).DragWindow().Children(func() {
-		if iconButton(c, iconSidebar, "Hide Sidebar", keySidebar).Clicked() {
+	hide := func(below float32) {
+		if iconButton(c, iconSidebar, "Hide Sidebar", keySidebar).Margin(0, 0, below, 0).Clicked() {
 			a.sidebarHidden = true
 		}
+	}
+	if !ownTitleBar {
+		bar := windowControls(c)
+		ui.Row(c).Height(headerHeight).Shrink(0).Padding(0, 10, 0, bar.Left+8).AlignItems(ui.Center).Justify(ui.End).DragWindow().Children(func() { hide(0) })
+		return
+	}
+	t := c.Theme()
+	ui.Row(c).Height(headerHeight).Shrink(0).Padding(0, 10, 0, 18).Gap(18).AlignItems(ui.End).
+		BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).DragWindow().Children(func() {
+		if a.repo != nil {
+			a.tabButtons(c)
+		} else {
+			ui.Text(c, "Files").FontSize(13).FontWeight(600).Margin(0, 0, 10, 0)
+		}
+		ui.Spacer(c)
+		hide((headerHeight - 26) / 2) // centered, as the toolbar's controls
 	})
 }
 
-// sidebarTabs switch the sidebar between the files and the history: words,
-// the chosen one underlined in the accent color.
+// sidebarTabs is the row of the tabs on macOS, under the sidebar's top
+// row, which the window's controls take.
 func (a *app) sidebarTabs(c *ui.Context) {
 	t := c.Theme()
-	ui.Row(c).Gap(18).Padding(0, 18).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).Children(func() {
-		for _, tab := range []struct {
-			tab   int
-			label string
-		}{{tabFiles, "Files"}, {tabHistory, "History"}} {
-			chosen := a.sideTab == tab.tab
-			b := ui.ButtonBase(c.Key(tab.label)).Padding(4, 0, 8, 0).Label(tab.label)
-			if b.Clicked() {
-				a.sideTab = tab.tab
-			}
-			text := t.TextMuted
-			switch {
-			case chosen:
-				text = t.Text
-				b.BorderWidth(0, 0, 2, 0).BorderColor(t.Accent)
-			case b.Hovered():
-				text = t.Text
-			}
-			// Bold either way, so that choosing doesn't move the words.
-			b.Children(func() { ui.Text(c, tab.label).FontSize(13).FontWeight(600).TextColor(text) })
+	ui.Row(c).Gap(18).Padding(0, 18).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(t.Border.Alpha(0.6)).Children(func() { a.tabButtons(c) })
+}
+
+// tabButtons switch the sidebar between the files and the history: words,
+// the chosen one underlined in the accent color.
+func (a *app) tabButtons(c *ui.Context) {
+	t := c.Theme()
+	for _, tab := range []struct {
+		tab   int
+		label string
+	}{{tabFiles, "Files"}, {tabHistory, "History"}} {
+		chosen := a.sideTab == tab.tab
+		b := ui.ButtonBase(c.Key(tab.label)).Padding(4, 0, 8, 0).Label(tab.label)
+		if b.Clicked() {
+			a.sideTab = tab.tab
 		}
-	})
+		text := t.TextMuted
+		switch {
+		case chosen:
+			text = t.Text
+			b.BorderWidth(0, 0, 2, 0).BorderColor(t.Accent)
+		case b.Hovered():
+			text = t.Text
+		}
+		// Bold either way, so that choosing doesn't move the words.
+		b.Children(func() { ui.Text(c, tab.label).FontSize(13).FontWeight(600).TextColor(text) })
+	}
 }
 
 // filterField filters the files by their paths, as a search field.
