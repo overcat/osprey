@@ -1,11 +1,11 @@
-# Pushing a tag v<version> builds Osprey for every platform, each in a job
-# of its own, then puts what they built into a draft release, to check and
-# publish by hand. The builds are not signed.
+# Pushing a tag of the date, as scripts/release.sh does, builds Osprey for
+# every platform, each in a job of its own, then puts what they built into
+# a draft release, to check and publish by hand. The builds are not signed.
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["[0-9][0-9][0-9][0-9].*"]
 
 permissions:
   contents: write
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Check that the tag is the version in mygo.json
-        run: test "$GITHUB_REF_NAME" = "v$(jq -r .version mygo.json)"
+        run: test "$GITHUB_REF_NAME" = "$(jq -r .version mygo.json)"
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -46,7 +46,7 @@ jobs:
       # programs alone, which run without installing.
       - name: Collect the assets
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="$GITHUB_REF_NAME"
           mkdir assets
           for dir in dist/*/; do
             target="$(basename "$dir")"
@@ -79,5 +79,5 @@ jobs:
         run: |
           (cd assets && shasum -a 256 * > SHA256SUMS.txt)
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes --title "Osprey ${GITHUB_REF_NAME#v}"
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes --title "Osprey $GITHUB_REF_NAME"
           gh release upload "$GITHUB_REF_NAME" assets/* --clobber
