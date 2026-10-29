@@ -35,10 +35,10 @@ func (a *app) sidebar(c *ui.Context) {
 	})
 }
 
-// sidebarTop is the room of the window controls, with the button hiding
-// the sidebar.
+// sidebarTop is the sidebar's row beside the toolbar, with the button
+// hiding the sidebar, and room for macOS's window controls.
 func (a *app) sidebarTop(c *ui.Context) {
-	bar := c.TitleBar()
+	bar := windowControls(c)
 	ui.Row(c).Height(headerHeight).Shrink(0).Padding(0, 10, 0, bar.Left+8).AlignItems(ui.Center).Justify(ui.End).DragWindow().Children(func() {
 		if iconButton(c, iconSidebar, "Hide Sidebar", keySidebar).Clicked() {
 			a.sidebarHidden = true

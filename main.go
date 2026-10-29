@@ -79,7 +79,8 @@ func main() {
 	mygo.App.SetName("Osprey")
 	mygo.App.WhenReady(func() {
 		setDockIcon()
-		mygo.App.SetMenu(a.menu())
+		a.appMenu = a.menu()
+		mygo.App.SetMenu(a.appMenu)
 		a.win = mygo.NewWindow(mygo.WindowOptions{
 			Title:                "Osprey",
 			Width:                1280,
@@ -89,6 +90,7 @@ func main() {
 			StateKey:             "main",
 			TitleBarStyle:        mygo.TitleBarHidden,
 			TrafficLightPosition: &mygo.Point{X: 18, Y: (headerHeight - 14) / 2},
+			TitleBarHeight:       titleBarHeight,
 			Vibrancy:             sidebarMaterial(),
 			Content:              ui.View(a.view),
 		})

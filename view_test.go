@@ -138,6 +138,43 @@ func TestCompactReviewControls(t *testing.T) {
 	}
 }
 
+// Off macOS the window draws a title bar of its own: the window's buttons
+// sit in it, on either side, with a button that opens the menus, and the
+// toolbar and the welcome page go under it, whole.
+func TestOwnTitleBar(t *testing.T) {
+	defer func(own bool) { ownTitleBar = own }(ownTitleBar)
+	// Windows' three buttons on the right, and a desktop's on the left.
+	bars := []ui.TitleBar{{Height: titleBarHeight, Right: 138}, {Height: titleBarHeight, Left: 207}}
+	for _, own := range []bool{true, false} {
+		ownTitleBar = own
+		for _, bar := range bars {
+			for _, size := range [][2]int{{1280, 820}, {720, 420}} {
+				for name, a := range map[string]*app{"welcome page": newApp(), "files": reviewFixture()} {
+					where := fmt.Sprintf("%s, %dx%d, buttons %+v", name, size[0], size[1], bar)
+					h := ui.NewTester(a.view, size[0], size[1])
+					h.SetTitleBar(bar)
+					r, ok := h.Find("Menu")
+					if ok != own {
+						t.Fatalf("%s: a menu button is %v, want %v", where, ok, own)
+					}
+					if !own {
+						continue
+					}
+					if r.Y+r.H > titleBarHeight || r.X < bar.Left || r.X+r.W > float32(size[0])-bar.Right {
+						t.Errorf("%s: the menu button at %+v is not in the title bar, beside the window's buttons", where, r)
+					}
+					click(t, h, "Menu") // with no window to open the menus over, nothing
+					for _, label := range []string{"Hide Sidebar", "Next change", "Single File", "Commands"} {
+						if r, ok := h.Find(label); ok && (r.Y < titleBarHeight || r.Y+r.H > float32(size[1]) || r.X+r.W > float32(size[0])) {
+							t.Errorf("%s: %q at %+v is not under the title bar, in the window", where, label, r)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestWelcomeCommands(t *testing.T) {
 	for _, size := range [][2]int{{1280, 820}, {720, 420}} {
 		h := ui.NewTester(newApp().view, size[0], size[1])

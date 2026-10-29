@@ -47,7 +47,7 @@ func (a *app) feedView(c *ui.Context, files []*file) {
 		a.feed.target = ""
 	}
 	a.feed.rows = files
-	_, height := c.Size()
+	height := contentHeight(c)
 	ui.List(c, &a.feed.list, len(files)*2, func(i int) {
 		f := files[i/2]
 		if i%2 == 0 {

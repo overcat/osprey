@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -9,10 +10,20 @@ import (
 	"github.com/overcat/osprey/internal/changes"
 )
 
-// headerHeight is the height of the toolbar along the top, under the
-// window controls (mygo.WindowOptions.TrafficLightPosition centers them in
-// it).
+// headerHeight is the height of the toolbar along the top: on macOS under
+// the window controls, which mygo.WindowOptions.TrafficLightPosition
+// centers in it, and elsewhere under the window's own title bar.
 const headerHeight = 52
+
+// ownTitleBar is whether the window draws a title bar of its own above the
+// toolbar, off macOS: the window's buttons sit in it, wherever the desktop
+// puts them, clear of the toolbar, with a button that opens the menus,
+// which a window without its system title bar doesn't show there.
+var ownTitleBar = runtime.GOOS != "darwin"
+
+// titleBarHeight is the height of the window's own title bar, as Windows
+// 11's: mygo.WindowOptions.TitleBarHeight fits the window's buttons in it.
+const titleBarHeight = 32
 
 // fileHeadingHeight is the height of the bar over each file.
 const fileHeadingHeight = 38
@@ -28,15 +39,61 @@ func (a *app) view(c *ui.Context) {
 	a.sidebarWidth = min(max(a.sidebarWidth, 220), min(400, max(220, w-440)))
 	a.followFeed()
 	a.syncSelection()
-	switch {
-	case a.src == nil:
-		a.welcome(c)
-	case a.sidebarHidden:
-		a.main(c)
-	default:
-		ui.Split(c, &a.sidebarWidth, func() { a.sidebar(c) }, func() { a.main(c) }).Fill()
+	content := func() {
+		switch {
+		case a.src == nil:
+			a.welcome(c)
+		case a.sidebarHidden:
+			a.main(c)
+		default:
+			ui.Split(c, &a.sidebarWidth, func() { a.sidebar(c) }, func() { a.main(c) }).Fill()
+		}
+	}
+	if ownTitleBar {
+		ui.Column(c).Fill().Children(func() {
+			a.titleBar(c)
+			ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(content)
+		})
+	} else {
+		content()
 	}
 	ui.Modal(c, &a.shortcutsOpen, func() { shortcutsPanel(c) })
+}
+
+// titleBar is the window's own title bar (ownTitleBar): the window's
+// buttons, and the button that opens the menu bar's menus under it, with
+// the app's name.
+func (a *app) titleBar(c *ui.Context) {
+	t := c.Theme()
+	bar := c.TitleBar()
+	ui.Row(c).Height(titleBarHeight).Shrink(0).FillWidth().Padding(0, bar.Right+8, 0, bar.Left+6).Gap(4).
+		AlignItems(ui.Center).Background(sidebarFill(t)).DragWindow().Children(func() {
+		b := iconButton(c, iconMenu, "Menu", "")
+		if b.Clicked() && a.win != nil {
+			r := b.Bounds()
+			go a.appMenu.PopupAt(a.win, int(r.X), int(r.Y+r.H))
+		}
+		ui.Text(c, "Osprey").FontSize(12).TextColor(t.TextMuted).SingleLine()
+	})
+}
+
+// contentHeight is the height of the window under its own title bar.
+func contentHeight(c *ui.Context) float32 {
+	_, h := c.Size()
+	if ownTitleBar {
+		h -= titleBarHeight
+	}
+	return h
+}
+
+// windowControls is the room the window's controls take in the row of the
+// toolbar: the traffic lights on macOS, and none elsewhere, where the
+// window's own title bar holds them.
+func windowControls(c *ui.Context) ui.TitleBar {
+	if ownTitleBar {
+		return ui.TitleBar{}
+	}
+	return c.TitleBar()
 }
 
 // main is the pane of the files: its toolbar, then the feed or the file
@@ -73,7 +130,7 @@ func (a *app) paneWidth(c *ui.Context) float32 {
 // toolbar is the window's title and its controls, in the title bar.
 func (a *app) toolbar(c *ui.Context) {
 	t := c.Theme()
-	bar := c.TitleBar()
+	bar := windowControls(c)
 	f := a.current()
 	pane := a.paneWidth(c)
 	left := float32(16)
