@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -51,7 +52,8 @@ func line(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(first), nil
 }
 
-// RepoRoot returns the top of the work tree holding dir.
+// RepoRoot returns the top of the work tree holding dir, as the system
+// writes paths: git writes C:/Users on Windows, where Go writes C:\Users.
 func RepoRoot(dir string) (string, error) {
 	root, err := line(dir, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -60,7 +62,7 @@ func RepoRoot(dir string) (string, error) {
 		}
 		return "", fmt.Errorf("%s is not inside a Git repository", dir)
 	}
-	return root, nil
+	return filepath.Clean(root), nil
 }
 
 // Revisions returns the commits revs name now, as one string to compare

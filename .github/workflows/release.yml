@@ -1,5 +1,6 @@
-# Pushing a tag v<version> builds Osprey for every platform into a draft
-# release, to check and publish by hand. The builds are not signed.
+# Pushing a tag v<version> builds Osprey for every platform, each in a job
+# of its own, then puts what they built into a draft release, to check and
+# publish by hand. The builds are not signed.
 name: Release
 
 on:
@@ -10,47 +11,37 @@ permissions:
   contents: write
 
 jobs:
-  draft:
-    name: Draft the release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Check that the tag is the version in mygo.json
-        run: test "$GITHUB_REF_NAME" = "v$(jq -r .version mygo.json)"
-      - name: Create the draft
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes --title "Osprey ${GITHUB_REF_NAME#v}"
-
   build:
     name: Build for ${{ matrix.name }}
-    needs: draft
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # slug is the folder mygo builds the platform's app into.
       matrix:
         include:
-          - { name: macOS, slug: macos, os: macos-latest, platform: "darwin/arm64" }
-          - { name: Linux and Windows, slug: linux-windows, os: ubuntu-latest, platform: "linux/amd64,linux/arm64,windows/amd64,windows/arm64" }
+          - { name: Linux x64, slug: linux-amd64, target: linux/amd64, os: ubuntu-latest }
+          - { name: Linux ARM, slug: linux-arm64, target: linux/arm64, os: ubuntu-latest }
+          - { name: macOS ARM, slug: darwin-arm64, target: darwin/arm64, os: macos-latest }
+          - { name: Windows x64, slug: windows-amd64, target: windows/amd64, os: ubuntu-latest }
+          - { name: Windows ARM, slug: windows-arm64, target: windows/arm64, os: ubuntu-latest }
     steps:
       - uses: actions/checkout@v7
+      - name: Check that the tag is the version in mygo.json
+        run: test "$GITHUB_REF_NAME" = "v$(jq -r .version mygo.json)"
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Install NSIS, for the Windows installers
-        if: runner.os == 'Linux'
+      # NSIS makes the installer; osp.exe and osprey.com run Osprey.exe
+      # from a terminal.
+      - name: Install NSIS, and build the console programs
+        if: startsWith(matrix.target, 'windows/')
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nsis
+          scripts/windows-launchers.sh
       - name: Build
-        run: |
-          if [ "$RUNNER_OS" = Linux ]; then
-            scripts/windows-launchers.sh
-          fi
-          go tool mygo build -platform "${{ matrix.platform }}" -o dist
+        run: go tool mygo build -platform "${{ matrix.target }}" -o dist
       # The installers and archives mygo made, and for Windows a zip of the
       # programs alone, which run without installing.
       - name: Collect the assets
@@ -64,8 +55,29 @@ jobs:
             esac
             find "$dir" -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.tar.gz' -o -name '*-setup-*.exe' \) -exec cp {} assets/ \;
           done
-          cd assets && shasum -a 256 * > "SHA256SUMS-${{ matrix.slug }}.txt"
-      - name: Upload them to the draft
+      - uses: actions/upload-artifact@v7
+        with:
+          name: assets-${{ matrix.slug }}
+          path: assets/
+          if-no-files-found: error
+
+  # Only once every platform built: a release never misses one.
+  release:
+    name: Draft the release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: assets-*
+          path: assets
+          merge-multiple: true
+      - name: Put the assets, with their checksums, into a draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" assets/* --clobber
+        run: |
+          (cd assets && shasum -a 256 * > SHA256SUMS.txt)
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes --title "Osprey ${GITHUB_REF_NAME#v}"
+          gh release upload "$GITHUB_REF_NAME" assets/* --clobber
