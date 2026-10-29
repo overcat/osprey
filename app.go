@@ -56,7 +56,8 @@ type app struct {
 	expand        bool // show unchanged lines in the diff
 	flat          bool // the files as a list rather than a tree
 	sidebarWidth  float32
-	shortcutsOpen bool // the panel of the keyboard shortcuts
+	shortcutsOpen bool     // the panel of the keyboard shortcuts
+	cli           cliState // the command line tool, as the welcome page tells of it
 }
 
 // session is what Osprey shows of one source, and how far its review

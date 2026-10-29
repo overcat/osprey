@@ -76,6 +76,7 @@ func main() {
 	releaseConsole()
 
 	a := newApp()
+	a.cli.missing = cliMissing()
 	mygo.App.SetName("Osprey")
 	mygo.App.WhenReady(func() {
 		setDockIcon()

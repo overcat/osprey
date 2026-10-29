@@ -66,5 +66,37 @@ func (a *app) commandCard(c *ui.Context) {
 				ui.Text(c, cmd.does).FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(1)
 			})
 		}
+		a.cliStatus(c)
+	})
+}
+
+// cliState is what the welcome page tells of the command line tool, which
+// the commands it lists need.
+type cliState struct {
+	missing bool   // osprey and osp aren't installed
+	said    string // what installing them said
+	err     error  // why installing them failed
+}
+
+// cliStatus tells, under the commands, that they need installing, with a
+// button that installs them, and then how that went.
+func (a *app) cliStatus(c *ui.Context) {
+	if !a.cli.missing && a.cli.said == "" {
+		return
+	}
+	t := c.Theme()
+	ui.Row(c).Margin(8, 0, 0, 0).Padding(10, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Gap(12).
+		AlignItems(ui.Center).Children(func() {
+		text, color := "These need the osprey and osp commands.", t.TextMuted
+		switch {
+		case a.cli.err != nil:
+			text, color = "Couldn't install them: "+a.cli.err.Error(), t.Danger
+		case a.cli.said != "":
+			text, color = a.cli.said, t.Success
+		}
+		ui.Text(c, text).FontSize(12).TextColor(color).Grow(1).Shrink(1).MinWidth(0)
+		if a.cli.missing && ui.Button(c, "Install").Shrink(0).Clicked() && a.win != nil {
+			go a.installCommands()
+		}
 	})
 }

@@ -50,3 +50,63 @@ func TestInstallCLIWithoutShare(t *testing.T) {
 		t.Fatalf("said %q, %v", said, err)
 	}
 }
+
+// The welcome page offers to install the commands unless osprey and osp
+// both run the program from a directory of the PATH.
+func TestLinksTo(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe, other, bin := filepath.Join(dir, "Osprey"), filepath.Join(dir, "other"), filepath.Join(dir, "bin")
+	for _, p := range []string{exe, other} {
+		if err := os.WriteFile(p, nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.Mkdir(bin, 0o755)
+	link := func(name, target string) {
+		os.Remove(filepath.Join(bin, name))
+		if err := os.Symlink(target, filepath.Join(bin, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if linksTo(bin, exe) {
+		t.Error("an empty directory runs the program")
+	}
+	link("osprey", exe)
+	if linksTo(bin, exe) {
+		t.Error("osprey alone runs the program, without osp")
+	}
+	link("osp", other)
+	if linksTo(bin, exe) {
+		t.Error("osp runs another program, yet counts")
+	}
+	link("osp", exe)
+	if !linksTo(bin, exe) {
+		t.Error("osprey and osp run the program, yet don't count")
+	}
+}
+
+// Where no usual directory of the PATH takes them, as on a fresh Linux,
+// the commands go to ~/.local/bin, which install-cli makes, saying while
+// the PATH lacks it.
+func TestInstallInHome(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	exe, bin := filepath.Join(home, "Osprey"), filepath.Join(home, ".local", "bin")
+	if err := os.WriteFile(exe, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", "/usr/bin:/bin")
+	if said, err := installInHome(exe); err != nil || !linksTo(bin, exe) || !strings.Contains(said, "isn't on your PATH yet") {
+		t.Fatalf("said %q, %v", said, err)
+	}
+	t.Setenv("PATH", bin+":/usr/bin:/bin")
+	if said, err := installInHome(exe); err != nil || said != "osprey and osp are in "+bin+"." {
+		t.Fatalf("with it on the PATH, said %q, %v", said, err)
+	}
+}

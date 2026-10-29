@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -186,6 +187,39 @@ func TestWelcomeCommands(t *testing.T) {
 		r, ok := h.Find("Commands")
 		if !ok || r.Y < 0 || r.Y+r.H > float32(size[1]) || r.X < 0 || r.X+r.W > float32(size[0]) {
 			t.Fatalf("%dx%d: commands outside the window: %+v", size[0], size[1], r)
+		}
+	}
+}
+
+// Where the commands it lists aren't installed, the welcome page offers to
+// install them, under them, and then tells how that went.
+func TestWelcomeInstall(t *testing.T) {
+	for _, size := range [][2]int{{1280, 820}, {720, 420}} {
+		a := newApp()
+		h := ui.NewTester(a.view, size[0], size[1])
+		if _, ok := h.Find("Install"); ok || h.HasText("These need the osprey and osp commands.") {
+			t.Fatalf("%dx%d: offers to install the commands where they are", size[0], size[1])
+		}
+		a.cli.missing = true
+		h.Frame()
+		card, _ := h.Find("Commands")
+		r, ok := h.Find("Install")
+		if !ok || !h.HasText("These need the osprey and osp commands.") {
+			t.Fatalf("%dx%d: doesn't offer to install the commands", size[0], size[1])
+		}
+		if r.Y < card.Y || r.Y+r.H > card.Y+card.H || card.Y+card.H > float32(size[1]) {
+			t.Errorf("%dx%d: the button at %+v isn't in the card of the commands at %+v, in the window", size[0], size[1], r, card)
+		}
+		click(t, h, "Install") // with no window, nothing
+		a.cli = cliState{missing: true, err: errors.New("no directory to install into")}
+		h.Frame()
+		if _, ok := h.Find("Install"); !ok || !h.HasText("Couldn't install them: no directory to install into") {
+			t.Errorf("%dx%d: doesn't say why installing failed, and offer to try again", size[0], size[1])
+		}
+		a.cli = cliState{said: "osprey and osp are in /usr/local/bin."}
+		h.Frame()
+		if _, ok := h.Find("Install"); ok || !h.HasText("osprey and osp are in /usr/local/bin.") {
+			t.Errorf("%dx%d: doesn't say where it installed the commands, alone", size[0], size[1])
 		}
 	}
 }
