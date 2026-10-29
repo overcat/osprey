@@ -20,11 +20,11 @@ jobs:
     strategy:
       fail-fast: false
       # slug is the folder mygo builds the platform's app into. Linux x64
-      # checks what is the same everywhere, and packages Windows x64's app
-      # too, with its installer, as the Release workflow does.
+      # also checks what is the same everywhere, and builds both Windows
+      # apps with their installers, as the Release workflow does.
       matrix:
         include:
-          - { name: Linux x64, slug: linux-amd64, os: ubuntu-latest, platforms: "linux/amd64,windows/amd64", checks: true }
+          - { name: Linux x64, slug: linux-amd64, os: ubuntu-latest, platforms: "linux/amd64,windows/amd64,windows/arm64", checks: true }
           - { name: Linux ARM, slug: linux-arm64, os: ubuntu-24.04-arm, platforms: linux/arm64 }
           - { name: macOS ARM, slug: darwin-arm64, os: macos-latest, platforms: darwin/arm64 }
           - { name: Windows x64, slug: windows-amd64, os: windows-latest, platforms: windows/amd64 }
@@ -60,13 +60,11 @@ jobs:
             GOOS=$os go vet -tags mygo_noinspector ./...
           done
 
+      # The race detector needs cgo, and doesn't run on Windows on ARM.
       - name: Test
-        if: runner.os != 'Windows'
-        run: go test -race ./...
-      - name: Test
-        if: runner.os == 'Windows'
-        run: go test ./...
+        run: go test ${{ runner.os != 'Windows' && '-race' || '' }} ./...
 
+      # A Windows app takes osp.exe and osprey.com beside Osprey.exe.
       - name: Package
         run: |
           case "${{ matrix.platforms }}" in
@@ -101,24 +99,24 @@ jobs:
           if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -notcontains $app) { throw "install-cli didn't put $app on the PATH" }
           exit 0
 
+      # The picture goes up from a failed run too, to see what it showed.
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
-          name: window-${{ matrix.slug }}
+          name: screenshot-${{ matrix.slug }}
           if-no-files-found: warn
           retention-days: 14
           path: ${{ runner.temp }}/shots/
-      # The macOS app goes as its .dmg: an artifact keeps no executable bits.
-      # Windows's apps go from Linux x64, which makes their installer.
+      # Each job's own platform's packages, the build it tested; the macOS
+      # app goes as its .dmg, as an artifact keeps no executable bits.
       - uses: actions/upload-artifact@v7
-        if: runner.os != 'Windows'
         with:
           name: packages-${{ matrix.slug }}
           if-no-files-found: error
           retention-days: 14
           path: |
-            ${{ runner.temp }}/build/*/*.dmg
-            ${{ runner.temp }}/build/*/*.deb
-            ${{ runner.temp }}/build/*/*.tar.gz
-            ${{ runner.temp }}/build/*/*.exe
-            ${{ runner.temp }}/build/*/*.com
+            ${{ runner.temp }}/build/${{ matrix.slug }}/*.dmg
+            ${{ runner.temp }}/build/${{ matrix.slug }}/*.deb
+            ${{ runner.temp }}/build/${{ matrix.slug }}/*.tar.gz
+            ${{ runner.temp }}/build/${{ matrix.slug }}/*.exe
+            ${{ runner.temp }}/build/${{ matrix.slug }}/*.com
