@@ -82,6 +82,18 @@ jobs:
             Windows) scripts/smoke-test.sh "$app/Osprey.exe" "$shot" ;;
           esac
 
+      # What the package holds, as apt installs and removes it: both commands.
+      - name: Install the Debian package, run its commands, and remove it
+        if: runner.os == 'Linux'
+        run: |
+          want="osprey $(jq -r .version mygo.json)"
+          sudo apt-get install -y --no-install-recommends "$RUNNER_TEMP"/build/${{ matrix.slug }}/*.deb
+          test "$(/usr/bin/osprey --version)" = "$want"
+          test "$(/usr/bin/osp --version)" = "$want"
+          sudo apt-get remove -y osprey
+          test ! -e /usr/bin/osprey
+          test ! -e /usr/bin/osp
+
       - name: Check the command line, through osp.exe and osprey.com
         if: runner.os == 'Windows'
         shell: pwsh
