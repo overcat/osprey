@@ -13,7 +13,7 @@
   },
   "linux": {
     "webview": false,
-    "command": "osprey",
+    "command": ["osprey", "osp"],
     "maintainer": "Jun Luo <4catcode@gmail.com>",
     "comment": "Review code changes file by file",
     "categories": ["Development"]
