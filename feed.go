@@ -92,15 +92,17 @@ func (a *app) feedBody(c *ui.Context, f *file) {
 		ui.Text(c, "No changes in the text").FontSize(12).TextColor(t.TextMuted).Padding(16, 20)
 		return
 	}
-	d.RenderAnnotation = func(c *ui.Context, _ editor.DiffAnnotation) {
-		// Include room above the changed line for the pinned file heading.
-		anchor := ui.Box(c).Absolute().Top(-fileHeadingHeight - 44).Height(fileHeadingHeight + 66).Width(1).Label("Change anchor " + f.Path)
+	a.followEditorFocus(editor.DiffView(c.Key(f), d).FillWidth(), f)
+	if at := f.anchor; at != nil {
+		// Over the changed line, with room above it for the pinned file
+		// heading.
+		top := float32(d.LineTop(at.side, at.line))
+		anchor := ui.Box(c).Absolute().Top(top - fileHeadingHeight - 44).Height(fileHeadingHeight + 88).Width(1).Label("Change anchor " + f.Path)
 		if a.feed.hunk == f {
 			anchor.ScrollIntoView()
 			a.feed.hunk = nil
 		}
 	}
-	a.followEditorFocus(editor.DiffView(c.Key(f), d).FillWidth(), f)
 }
 
 // Clicking into another visible file makes keyboard review commands act
@@ -113,9 +115,10 @@ func (a *app) followEditorFocus(e ui.Element, f *file) {
 	f.focused = focused
 }
 
-// revealHunk scrolls the feed to change i of f. A zero-height annotation
-// at the change anchors it exactly, even for wrapped lines and unified
-// deletions, without estimating the diff's geometry.
+// revealHunk scrolls the feed to change i of f. The diff's own place of
+// the changed line anchors it, even for wrapped lines and unified
+// deletions, and out of view: the diff builds only what is near what it
+// shows, so an annotation there would not build.
 func (a *app) revealHunk(f *file, i int) {
 	d := f.diffView(modeContinuous)
 	h := d.Hunks()[i]
@@ -123,7 +126,7 @@ func (a *app) revealHunk(f *file, i int) {
 	if h.NewStart == h.NewEnd {
 		side, line = editor.DiffOld, h.OldStart
 	}
-	d.Annotations = []editor.DiffAnnotation{{Side: side, Line: line, Key: "navigation"}}
+	f.anchor = &changeLine{side, line}
 	f.folded = false
 	a.feed.hunk = f
 }

@@ -17,6 +17,13 @@ type file struct {
 	views    [2]fileViews // by browse mode
 	folded   bool         // collapsed in the continuous feed
 	focused  bool         // one of its editors in the feed had the keyboard
+	anchor   *changeLine  // the change the feed last went to
+}
+
+// changeLine is a line of a side of a diff.
+type changeLine struct {
+	side editor.DiffSide
+	line int
 }
 
 // fileViews are a file's diff and whole-file editor in one reading mode.
@@ -79,13 +86,10 @@ func (f *file) fullView(mode int) *editor.State {
 // update takes the texts of g, the file loaded again, keeping f's
 // buffers, so that its views keep their place as an agent edits it.
 func (f *file) update(g *file) {
-	f.folded = false
+	f.folded, f.anchor = false, nil
 	if f.hasText() && g.hasText() {
 		resetText(f.old, g.old)
 		resetText(f.new, g.new)
-		if d := f.views[modeContinuous].diff; d != nil {
-			d.Annotations = nil // the anchor of a change it went to
-		}
 	} else {
 		f.old, f.new, f.views = g.old, g.new, g.views
 	}
