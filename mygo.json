@@ -2,7 +2,7 @@
   "name": "Osprey",
   "slug": "osprey",
   "identifier": "network.lightsail.osprey",
-  "version": "2026.11.3",
+  "version": "2026.11.9",
   "copyright": "© 2026 Jun Luo",
   "resources": ["LICENSE", "THIRD_PARTY_NOTICES.md"],
   "macos": {
